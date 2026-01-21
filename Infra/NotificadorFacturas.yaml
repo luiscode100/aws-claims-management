@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Stack Serverless encargado de recibir facturas en PDF y notificar automáticamente al cliente vía correo electrónico.
+
+Parameters:
+  EmailAddress:
+    Type: String
+    Description: Dirección de correo para recibir notificaciones de SNS.
+  LabRoleArn:
+    Type: String
+    Description: ARN del LabRole existente de IAM que se usará para la ejecución de la función Lambda.
+  CoreStackName:
+    Type: String
+    Default: core-backend
+
+Resources:
+  FacturasBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "facturas-gestorsiniestros-${AWS::AccountId}"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      Tags:
+        - Key: Project
+          Value: GestorSiniestros
+
+  FacturasBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FacturasBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PublicReadPDF
+            Effect: Allow
+            Principal: "*"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${FacturasBucket}/*"
+
+  FacturaNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: Notificaciones-GestorSiniestros
+      DisplayName: Gestion Siniestros
+
+  FacturaEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref EmailAddress
+      TopicArn: !Ref FacturaNotificationTopic
+
+  NotificacionFacturaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: NotificadorFacturas
+      Handler: EmailFunction.lambda_handler
+      Runtime: python3.12
+      CodeUri: ../src/Notification/
+      MemorySize: 128
+      Timeout: 10
+      Role: !Ref LabRoleArn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref FacturaNotificationTopic
+      
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-SecurityGroup"
+        SubnetIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet1"
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet2"
+
+      Events:
+        FacturaSubida:
+          Type: S3
+          Properties:
+            Bucket: !Ref FacturasBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .pdf

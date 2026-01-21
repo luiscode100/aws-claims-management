@@ -1,0 +1,71 @@
+body {
+    background-color: #f0f2f5;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.header-banner {
+    background: #323770;
+    color: white;
+}
+
+/* --- BOTONES DE ACCIÓN (Enviar/Buscar) --- */
+ .btn-primary, .btn-success {
+    background-color: #323770 !important;
+    border: none !important;
+}
+
+.btn-primary:hover, .btn-success:hover {
+    background-color: #5c64c4 !important;
+}
+
+/* --- ESTILO DE LAS PESTAÑAS --- */
+.custom-tabs {
+    border-bottom: none; 
+    margin-bottom: 0;
+}
+
+/* Pestañas inactivas (Grises para que resalte la activa) */
+.custom-tabs .nav-link {
+    background-color: #d1d1d1 !important; /* Gris un poco más oscuro para contraste */
+    color: #555 !important;
+    border: 1px solid #dee2e6;
+    border-bottom: none;
+    margin-right: 5px;
+    border-radius: 8px 8px 0 0;
+    padding: 10px 25px;
+    transition: all 0.2s;
+}
+
+/* Pestaña activa (Blanca y unida al contenedor) */
+.custom-tabs .nav-link.active {
+    background-color: #ffffff !important;
+    color: #323770 !important;
+    border-color: #dee2e6;
+    border-bottom-color: #ffffff !important; /* Elimina la línea inferior */
+    font-weight: bold;
+    position: relative;
+    z-index: 2;
+    margin-bottom: -1px; /* Solapa el borde del div inferior */
+}
+
+/* --- EL CONTENEDOR BLANCO --- */
+.custom-tab-content {
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    /* Quitamos el redondeo arriba-izquierda para que encaje con la pestaña */
+    border-radius: 0 12px 12px 12px; 
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.section-title {
+    font-size: 0.9rem;
+    color: #323770;
+    text-transform: uppercase;
+    font-weight: bold;
+    border-bottom: 2px solid #f0f2f5;
+    padding-bottom: 5px;
+    margin-bottom: 15px;
+    margin-top: 10px;
+}

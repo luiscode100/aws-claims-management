@@ -1,0 +1,24 @@
+{
+  "id_siniestro": "SIN-2025-Avz-001",
+  "cliente": {
+    "nombre": "Amancio Ortega",
+    "dni": "45678901Z",
+    "email": "amancio@student.academy.aws"
+  },
+  "vehiculo": {
+    "matricula": "1234-DGT",
+    "marca": "Seat",
+    "modelo": "Ibiza Sport",
+    "anio_matriculacion": 2008
+  },
+  "poliza": {
+    "tipo": "TODO_RIESGO_FRANQUICIA",
+    "limite_cobertura": 5000,
+    "franquicia": 300
+  },
+  "reparacion": {
+    "taller": "Talleres Mecánicos del Sur S.L.",
+    "coste_mano_obra": 400.00,
+    "coste_piezas": 1500.00
+  }
+}

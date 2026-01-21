@@ -1,0 +1,148 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Lambdas y API Gateway
+
+Parameters:
+  LabRoleArn:
+    Type: String
+  CoreStackName:
+    Type: String
+    Default: core-backend
+
+Resources:
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  backendAPI:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: backendAPI
+      Runtime: python3.11
+      Handler: lambda1.lambda_handler
+      CodeUri: ../src/backend/API
+      Role: !Ref LabRoleArn
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          QUEUE_URL: !ImportValue 
+            Fn::Sub: "${CoreStackName}-Queue1URL"
+          DB_HOST: !ImportValue 
+            Fn::Sub: "${CoreStackName}-DBEndpoint"
+          DB_PORT: 5432
+          DB_NAME: backenddb
+          DB_USER: admingestor
+          DB_PASSWORD: admingestor
+      Events:
+        CrearPost:
+          Type: Api
+          Properties:
+            Path: /crear
+            Method: post
+            RestApiId: !Ref ApiGatewayApi
+        ConsultarGet:
+          Type: Api
+          Properties:
+            Path: /consultar
+            Method: get
+            RestApiId: !Ref ApiGatewayApi
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-SecurityGroup"
+        SubnetIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet1"
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet2"
+
+  BackendCalculos:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: BackendCalculos
+      Runtime: python3.11
+      Handler: lambda2.lambda_handler
+      CodeUri: ../src/backend/Calculos
+      Timeout: 30
+      MemorySize: 512
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !ImportValue 
+              Fn::Sub: "${CoreStackName}-Queue2URL"
+      Environment:
+        Variables:
+          DB_HOST: !ImportValue 
+            Fn::Sub: "${CoreStackName}-DBEndpoint"
+          DB_PORT: 5432
+          DB_NAME: backenddb
+          DB_USER: admingestor
+          DB_PASSWORD: admingestor
+          QUEUE_1_URL: !ImportValue 
+            Fn::Sub: "${CoreStackName}-Queue1URL"
+          QUEUE_2_URL: !ImportValue 
+            Fn::Sub: "${CoreStackName}-Queue2URL"
+      Role: !Ref LabRoleArn
+      Events:
+        QueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !ImportValue 
+              Fn::Sub: "${CoreStackName}-Queue1ARN"
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-SecurityGroup"
+        SubnetIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet1"
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet2"
+
+  BackendGeneracionDocumentos:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: BackendDocumentos
+      Runtime: python3.11
+      Handler: lambda3.lambda_handler
+      CodeUri: ../src/backend/Documentos
+      Timeout: 120
+      MemorySize: 1024
+      Role: !Ref LabRoleArn
+      Environment:
+        Variables:
+          BUCKET_NAME: !Sub "facturas-gestorsiniestros-${AWS::AccountId}"
+          DB_HOST: !ImportValue 
+            Fn::Sub: "${CoreStackName}-DBEndpoint"
+          DB_PORT: 5432
+          DB_NAME: backenddb
+          DB_USER: admingestor
+          DB_PASSWORD: admingestor
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Sub "facturas-gestorsiniestros-${AWS::AccountId}"
+      Events:
+        QueueTrigger:
+          Type: SQS
+          Properties:
+            Queue: !ImportValue 
+              Fn::Sub: "${CoreStackName}-Queue2ARN"
+      VpcConfig:
+        SecurityGroupIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-SecurityGroup"
+        SubnetIds:
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet1"
+          - !ImportValue 
+            Fn::Sub: "${CoreStackName}-Subnet2"
+
+Outputs:
+  ApiGatewayApi:
+    Description: "URL del API Gateway"
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

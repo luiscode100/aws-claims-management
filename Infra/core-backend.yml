@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Infraestructura base para backend
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true  # Habilita la resolución de nombres DNS dentro de la VPC, permitiendo que instancias y servicios internos traduzcan nombres a IPs
+      EnableDnsHostnames: true # Permite que las instancias con IP pública reciban un nombre DNS automáticamente
+      Tags: [{ Key: Name, Value: vpc-gestor-siniestros }]
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet 
+    Properties:
+      VpcId: !Ref VPC # Asocia la subred a la VPC creada previamente
+      CidrBlock: 10.0.1.0/24 # Rango de IPs privadas de la subred
+      AvailabilityZone: !Select [ 0, !GetAZs "" ] # Selecciona la primera zona de disponibilidad disponible
+      Tags: [{ Key: Name, Value: subnet-privada-1 }]  # Nombre descriptivo de la subred
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      Tags: [{ Key: Name, Value: subnet-privada-2 }]
+
+#---Tabla de rutas privada---#
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC # La tabla de rutas pertenece a esta VPC
+      Tags: [{ Key: Name, Value: tabla-rutas-privada }]
+
+  RouteAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1 # Asocia la subred privada 1 a la tabla de rutas privada
+      RouteTableId: !Ref PrivateRouteTable
+
+  RouteAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2 # Asocia la subred privada 2 a la tabla de rutas privada
+      RouteTableId: !Ref PrivateRouteTable
+
+#------Grupo de Seguridad para Lambdas y RDS---#
+  BackendSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Acceso para Lambdas y RDS"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+#------Regla de Seguridad para que RDS se comunique consigo mismo---#
+  BackendSecurityGroupIngressSelf:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BackendSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref BackendSecurityGroup
+
+#------Grupo de Subredes para RDS---#
+  BackendDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnets privadas para RDS
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+
+#------Base de Datos RDS---#
+  BackendDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: backenddb
+      Engine: postgres
+      EngineVersion: "18.1"
+      MasterUsername: admingestor
+      MasterUserPassword: admingestor
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      DBSubnetGroupName: !Ref BackendDBSubnetGroup
+      VPCSecurityGroups: [!Ref BackendSecurityGroup]
+      PubliclyAccessible: true
+
+#------Colas---#
+  Queue1:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: queue-1
+
+  Queue2:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: queue-2
+      VisibilityTimeout: 150
+
+#------Endpoint VPC para S3, SQS y SNS---#
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref PrivateRouteTable]
+
+  SQSVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sqs"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref BackendSecurityGroup]
+
+  SNSVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sns"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateSubnet1, !Ref PrivateSubnet2]
+      SecurityGroupIds: [!Ref BackendSecurityGroup]
+
+#---Internet Gateway y Ruta por defecto---#
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: igw-gestor-siniestros }]
+#---Asociación del Internet Gateway a la VPC---#
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+#---Ruta por defecto en la tabla de rutas privada---#
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+#---Final de Internet Gateway y Ruta por defecto---#
+Outputs:
+  ExportDBEndpoint:
+    Value: !GetAtt BackendDB.Endpoint.Address
+    Export: { Name: !Sub "${AWS::StackName}-DBEndpoint" }
+  ExportSecurityGroup:
+    Value: !Ref BackendSecurityGroup
+    Export: { Name: !Sub "${AWS::StackName}-SecurityGroup" }
+  ExportQueue1URL:
+    Value: !Ref Queue1
+    Export: { Name: !Sub "${AWS::StackName}-Queue1URL" }
+  ExportQueue1ARN:
+    Value: !GetAtt Queue1.Arn
+    Export: { Name: !Sub "${AWS::StackName}-Queue1ARN" }
+  ExportQueue2URL:
+    Value: !Ref Queue2
+    Export: { Name: !Sub "${AWS::StackName}-Queue2URL" }
+  ExportQueue2ARN:
+    Value: !GetAtt Queue2.Arn
+    Export: { Name: !Sub "${AWS::StackName}-Queue2ARN" }
+  ExportSubnet1:
+    Value: !Ref PrivateSubnet1
+    Export: { Name: !Sub "${AWS::StackName}-Subnet1" }
+  ExportSubnet2:
+    Value: !Ref PrivateSubnet2
+    Export: { Name: !Sub "${AWS::StackName}-Subnet2" }

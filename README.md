@@ -24,6 +24,4 @@ Este proyecto implementa un sistema de gestión de siniestros de vehículos util
 - Alta disponibilidad y tolerancia a fallos.
 - Procesamiento completamente serverless, reduciendo costos de infraestructura.
 
-<p align="center">
-  <img src="images/architecture.jpeg" alt="Arquitectura Serverless" width="800">
-</p>
+![Arquitectura Serverless](images/architecture.jpeg)
